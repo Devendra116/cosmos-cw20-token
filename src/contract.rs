@@ -2,7 +2,8 @@
 use cosmwasm_std::entry_point;
 use cosmwasm_std::Order::Ascending;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Uint128,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError, StdResult, Timestamp,
+    Uint128,
 };
 
 use cw2::set_contract_version;
@@ -114,6 +115,7 @@ pub fn instantiate(
         Some(m) => Some(MinterData {
             minter: deps.api.addr_validate(&m.minter)?,
             cap: m.cap,
+            last_mint_time: Timestamp::from_seconds(0),
         }),
         None => None,
     };
@@ -295,7 +297,7 @@ pub fn execute_burn(
 
 pub fn execute_mint(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     recipient: String,
     amount: Uint128,
@@ -312,6 +314,21 @@ pub fn execute_mint(
         != info.sender
     {
         return Err(ContractError::Unauthorized {});
+    }
+
+    // Check if last mint time is not 0, and the 24 hr interval is completed for next mint
+    match &config.mint {
+        Some(mint) => {
+            if mint.last_mint_time.seconds() != 0
+                && mint.last_mint_time.plus_seconds(24 * 60 * 60) > env.block.time
+            {
+                return Err(StdError::generic_err(
+                    "You can only mint after the 24 hr Mint interval Ends",
+                )
+                .into());
+            }
+        }
+        None => (), // No additional handling required as the function will throw Unauthorized if no MinterData found
     }
 
     // This checkpoint allow mint of 1_000_000 tokens only
@@ -335,6 +352,13 @@ pub fn execute_mint(
             return Err(ContractError::CannotExceedCap {});
         }
     }
+
+    // Update the last_mint_time if everthing went good
+    match &mut config.mint {
+        Some(mint) => mint.last_mint_time = env.block.time,
+        None => (), // No additional handling required
+    }
+
     TOKEN_INFO.save(deps.storage, &config)?;
 
     // add amount to recipient balance
@@ -413,6 +437,7 @@ pub fn execute_update_minter(
         .map(|minter| MinterData {
             minter,
             cap: mint.cap,
+            last_mint_time: mint.last_mint_time,
         });
 
     config.mint = minter_data;

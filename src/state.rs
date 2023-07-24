@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Timestamp};
 use cw_storage_plus::{Item, Map};
 
 use cw20::{AllowanceResponse, Logo, MarketingInfoResponse};
@@ -18,6 +18,8 @@ pub struct MinterData {
     pub minter: Addr,
     /// cap is how many more tokens can be issued by the minter
     pub cap: Option<Uint128>,
+    /// last_mint_time is the last timestamp of token mint
+    pub last_mint_time: Timestamp
 }
 
 impl TokenInfo {
