@@ -314,6 +314,20 @@ pub fn execute_mint(
         return Err(ContractError::Unauthorized {});
     }
 
+    // This checkpoint allow mint of 1_000_000 tokens only
+    // 10^6 -> 10.0_f64.powf(6.0)
+    // the default_mint_amount is calculated by multiply token amount with 10^decimlas (token decimals)
+    let default_mint_amount =
+        (10.0_f64.powf(6.0) * 10.0_f64.powf(config.decimals as f64)).round() as u128;
+
+    if default_mint_amount != u128::from(amount) {
+        return Err(StdError::generic_err(format!(
+            "Mint amount should be {} tokens",
+            default_mint_amount
+        ))
+        .into());
+    }
+
     // update supply and enforce cap
     config.total_supply += amount;
     if let Some(limit) = config.get_cap() {
@@ -608,7 +622,10 @@ mod tests {
     use cosmwasm_std::testing::{
         mock_dependencies, mock_dependencies_with_balance, mock_env, mock_info,
     };
-    use cosmwasm_std::{coins, from_binary, Addr, CosmosMsg, StdError, SubMsg, WasmMsg};
+    use cosmwasm_std::{
+        coins, from_binary, Addr, BlockInfo, ContractInfo, CosmosMsg, StdError, SubMsg, Timestamp,
+        TransactionInfo, WasmMsg,
+    };
 
     use super::*;
     use crate::msg::InstantiateMarketingInfo;
@@ -876,12 +893,12 @@ mod tests {
         let genesis = String::from("genesis");
         let amount = Uint128::new(11223344);
         let minter = String::from("asmodat");
-        let limit = Uint128::new(511223344);
+        let limit = Uint128::new(2_000_000_000);
         do_instantiate_with_minter(deps.as_mut(), &genesis, amount, &minter, Some(limit));
 
         // minter can mint coins to some winner
         let winner = String::from("lucky");
-        let prize = Uint128::new(222_222_222);
+        let prize = Uint128::new(1_000_000_000);
         let msg = ExecuteMsg::Mint {
             recipient: winner.clone(),
             amount: prize,
@@ -894,23 +911,25 @@ mod tests {
         assert_eq!(get_balance(deps.as_ref(), genesis), amount);
         assert_eq!(get_balance(deps.as_ref(), winner.clone()), prize);
 
-        // Allows minting 0
-        let msg = ExecuteMsg::Mint {
-            recipient: winner.clone(),
-            amount: Uint128::zero(),
-        };
-        let info = mock_info(minter.as_ref(), &[]);
-        let env = mock_env();
-        execute(deps.as_mut(), env, info, msg).unwrap();
-
         // but if it exceeds cap (even over multiple rounds), it fails
         // cap is enforced
         let msg = ExecuteMsg::Mint {
             recipient: winner,
-            amount: Uint128::new(333_222_222),
+            amount: Uint128::new(1_000_000_000),
         };
         let info = mock_info(minter.as_ref(), &[]);
-        let env = mock_env();
+        let env = Env {
+            block: BlockInfo {
+                height: 12_345,
+                time: Timestamp::from_nanos(1571883819879305533),
+                chain_id: "cosmos-testnet-14002".to_string(),
+            },
+            transaction: Some(TransactionInfo { index: 3 }),
+            contract: ContractInfo {
+                address: Addr::unchecked("contract"),
+            },
+        };
+
         let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
         assert_eq!(err, ContractError::CannotExceedCap {});
     }
