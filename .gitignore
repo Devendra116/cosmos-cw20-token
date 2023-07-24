@@ -3,6 +3,7 @@
 
 # Build results
 target/
+out/
 
 # IDEs
 .vscode/
