@@ -960,6 +960,55 @@ mod tests {
     }
 
     #[test]
+    fn cannot_mint_before_24hr() {
+        let mut deps = mock_dependencies();
+
+        let genesis = String::from("genesis");
+        let amount = Uint128::new(11223344);
+        let minter = String::from("asmodat");
+        let limit = Uint128::new(3_000_000_000);
+        do_instantiate_with_minter(deps.as_mut(), &genesis, amount, &minter, Some(limit));
+
+        let person = String::from("lucky");
+        let person_amount = Uint128::new(1_000_000_000);
+        let msg = ExecuteMsg::Mint {
+            recipient: person.clone(),
+            amount: person_amount,
+        };
+
+        let info = mock_info(minter.as_ref(), &[]);
+        let env1 = mock_env();
+
+        let res = execute(deps.as_mut(), env1.clone(), info, msg).unwrap();
+        assert_eq!(0, res.messages.len());
+        assert_eq!(get_balance(deps.as_ref(), genesis), amount);
+        assert_eq!(get_balance(deps.as_ref(), person.clone()), person_amount);
+
+        let msg = ExecuteMsg::Mint {
+            recipient: person,
+            amount: Uint128::new(1_000_000_000),
+        };
+        let info = mock_info(minter.as_ref(), &[]);
+        let env = Env {
+            block: BlockInfo {
+                height: 12_345,
+                time: env1.block.time.plus_hours(23),
+                chain_id: "cosmos-testnet-14002".to_string(),
+            },
+            transaction: Some(TransactionInfo { index: 3 }),
+            contract: ContractInfo {
+                address: Addr::unchecked("contract"),
+            },
+        };
+
+        let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
+        assert_eq!(
+            err,
+            StdError::generic_err("You can only mint after the 24 hr Mint interval Ends").into()
+        );
+    }
+
+    #[test]
     fn others_cannot_mint() {
         let mut deps = mock_dependencies();
         do_instantiate_with_minter(
