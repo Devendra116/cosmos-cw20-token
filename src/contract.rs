@@ -317,7 +317,7 @@ pub fn execute_mint(
     }
 
     // Check if last mint time is not 0, and the 24 hr interval is completed for next mint
-    match &config.mint {
+    match &mut config.mint {
         Some(mint) => {
             if mint.last_mint_time.seconds() != 0
                 && mint.last_mint_time.plus_seconds(24 * 60 * 60) > env.block.time
@@ -326,9 +326,11 @@ pub fn execute_mint(
                     "You can only mint after the 24 hr Mint interval Ends",
                 )
                 .into());
+            } else {
+                mint.last_mint_time = env.block.time; // update last_mint_time to current mint request time
             }
         }
-        None => (), // No additional handling required as the function will throw Unauthorized if no MinterData found
+        None => (), // No further handling required as the function will throw Unauthorized if no MinterData found
     }
 
     // This checkpoint allow mint of 1_000_000 tokens only
@@ -351,12 +353,6 @@ pub fn execute_mint(
         if config.total_supply > limit {
             return Err(ContractError::CannotExceedCap {});
         }
-    }
-
-    // Update the last_mint_time if everthing went good
-    match &mut config.mint {
-        Some(mint) => mint.last_mint_time = env.block.time,
-        None => (), // No additional handling required
     }
 
     TOKEN_INFO.save(deps.storage, &config)?;
